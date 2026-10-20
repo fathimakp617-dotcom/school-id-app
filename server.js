@@ -512,10 +512,13 @@ async function start() {
   if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) throw new Error('DATABASE_URL is required in production; refusing to start with local JSON storage.')
   persistentStore = await createJsonStore({ dataDir })
   await authStore.bootstrapAdmin()
+  await authStore.bootstrapFixedAccounts()
   const accounts = await authStore.listAccounts()
   if (!accounts.some(user => user.role === 'admin')) throw new Error('No SchoolID Admin exists. Set SCHOOLID_ADMIN_EMAIL and SCHOOLID_ADMIN_PASSWORD before starting the server.')
+  if (process.env.NODE_ENV === 'production' && (!accounts.some(user => user.role === 'teacher') || !accounts.some(user => user.role === 'parent'))) {
+    throw new Error('Set the fixed SCHOOLID_STAFF_* and SCHOOLID_PARENT_* credentials before starting the production server.')
+  }
   httpServer.listen(port, '0.0.0.0', () => console.log(`SchoolID server listening on port ${port}`))
 }
 
 start().catch(error => { console.error(error.message); process.exitCode = 1 })
-
