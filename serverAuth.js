@@ -56,6 +56,63 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
     console.log('Bootstrapped the initial SchoolID Admin account.')
   }
 
+  // Optional fixed Staff and Parent sign-ins are configured as server secrets.
+  // Existing accounts are left untouched so a restart never resets passwords.
+  async function bootstrapFixedAccounts() {
+    const definitions = [
+      {
+        role: 'teacher',
+        email: process.env.SCHOOLID_STAFF_EMAIL,
+        password: process.env.SCHOOLID_STAFF_PASSWORD,
+        name: process.env.SCHOOLID_STAFF_NAME || 'School Staff',
+        class: process.env.SCHOOLID_STAFF_CLASS
+      },
+      {
+        role: 'parent',
+        email: process.env.SCHOOLID_PARENT_EMAIL,
+        password: process.env.SCHOOLID_PARENT_PASSWORD,
+        name: process.env.SCHOOLID_PARENT_NAME || 'School Parent',
+        studentId: process.env.SCHOOLID_PARENT_STUDENT_ID
+      }
+    ]
+
+    for (const definition of definitions) {
+      const email = String(definition.email || '').trim().toLowerCase()
+      const password = definition.password || ''
+      if (!email && !password) continue
+      if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 12) {
+        throw new Error(`Set a valid SCHOOLID_${definition.role === 'teacher' ? 'STAFF' : 'PARENT'}_EMAIL and a unique SCHOOLID_${definition.role === 'teacher' ? 'STAFF' : 'PARENT'}_PASSWORD of at least 12 characters.`)
+      }
+      if (definition.role === 'teacher' && !String(definition.class || '').trim()) {
+        throw new Error('Set SCHOOLID_STAFF_CLASS for the fixed Staff account.')
+      }
+      if (definition.role === 'parent' && !String(definition.studentId || '').trim()) {
+        throw new Error('Set SCHOOLID_PARENT_STUDENT_ID for the fixed Parent account.')
+      }
+
+      const list = await users()
+      const existing = list.find(user => user.email === email)
+      if (existing) {
+        if (existing.role !== definition.role) throw new Error(`The configured fixed ${definition.role} email is already used by a different account role.`)
+        continue
+      }
+
+      const { salt, passwordHash } = await hashPassword(password)
+      const user = {
+        id: randomUUID(), name: String(definition.name).trim(), email,
+        role: definition.role, passwordSalt: salt, passwordHash,
+        createdAt: new Date().toISOString(), active: true
+      }
+      if (definition.role === 'teacher') user.class = String(definition.class).trim()
+      if (definition.role === 'parent') user.studentId = String(definition.studentId).trim()
+      await updateJson(usersFile, [], current => {
+        if (current.some(item => item.email === email)) return current
+        return [...current, user]
+      })
+      console.log(`Bootstrapped the fixed SchoolID ${definition.role} account.`)
+    }
+  }
+
   async function createAccount({ name, email, password, role, studentId, className, subject }) {
     const list = await users()
     const normalizedEmail = String(email || '').trim().toLowerCase()
@@ -110,5 +167,5 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
     return (await users()).map(publicUser)
   }
 
-  return { bootstrapAdmin, createAccount, login, getUserForToken, revokeToken, listAccounts }
+  return { bootstrapAdmin, bootstrapFixedAccounts, createAccount, login, getUserForToken, revokeToken, listAccounts }
 }
