@@ -363,7 +363,7 @@ const httpServer = createServer(async (request, response) => {
       const students = [...mockStudents, ...await readAddedStudents()]
       const rfidUID = record.rfidUID.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
       if (students.some(student => student.rfidUID.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === rfidUID)) return sendJson(response, 409, { error: `RFID card ${rfidUID} is already assigned.` })
-      const requestedId = typeof record.id === 'string' && /^S\\d{3,}$/i.test(record.id.trim()) ? record.id.trim().toUpperCase() : null
+      const requestedId = typeof record.id === 'string' && /^S\d{3,}$/i.test(record.id.trim()) ? record.id.trim().toUpperCase() : null
       if (requestedId && students.some(student => String(student.id).toUpperCase() === requestedId)) return sendJson(response, 409, { error: `Student ID ${requestedId} is already in use.` })
       const nextNumber = students.reduce((max, student) => Math.max(max, Number(student.id.replace(/^S/i, '')) || 0), 0) + 1
       const colors = ['bg-cyan-600', 'bg-rose-500', 'bg-amber-500', 'bg-indigo-500', 'bg-teal-600']
