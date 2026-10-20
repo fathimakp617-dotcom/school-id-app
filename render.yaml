@@ -16,9 +16,21 @@ services:
       - key: CORS_ORIGINS
         value: https://localhost,capacitor://localhost
       - key: SCHOOLID_ADMIN_EMAIL
-        sync: false
+        value: admin@schoolid.app
       - key: SCHOOLID_ADMIN_PASSWORD
         sync: false
+      - key: SCHOOLID_STAFF_EMAIL
+        value: staff@schoolid.app
+      - key: SCHOOLID_STAFF_PASSWORD
+        sync: false
+      - key: SCHOOLID_STAFF_CLASS
+        value: SA1
+      - key: SCHOOLID_PARENT_EMAIL
+        value: parent@schoolid.app
+      - key: SCHOOLID_PARENT_PASSWORD
+        sync: false
+      - key: SCHOOLID_PARENT_STUDENT_ID
+        value: S006
       - key: SCHOOLID_RFID_DEVICE_KEY
         sync: false
 
@@ -29,4 +41,3 @@ databases:
     postgresMajorVersion: "17"
     region: singapore
     plan: free
-
