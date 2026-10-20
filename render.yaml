@@ -3,7 +3,7 @@ services:
     name: schoolid-app
     runtime: docker
     region: singapore
-    plan: 1c-2g
+    plan: free
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
@@ -28,5 +28,5 @@ databases:
     user: schoolid
     postgresMajorVersion: "17"
     region: singapore
-    plan: 0.5c-1g
+    plan: free
 
