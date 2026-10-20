@@ -25,8 +25,21 @@ const attachmentsDir = resolve(dataDir, 'attachments')
 const port = Number(process.env.PORT || 3001)
 let persistentStore
 const authStore = createAuthStore({ usersFile, sessionsFile, dataStore: { read: (...args) => persistentStore.read(...args), write: (...args) => persistentStore.write(...args) } })
-const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'https://localhost').split(',').map(origin => origin.trim()).filter(Boolean))
+const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'https://localhost,capacitor://localhost').split(',').map(origin => origin.trim()).filter(Boolean))
 if (process.env.NODE_ENV !== 'production') allowedOrigins.add('http://localhost:5173')
+
+function isAllowedRequestOrigin(origin, request) {
+  if (!origin) return true
+  if (allowedOrigins.has(origin)) return true
+  try {
+    const parsedOrigin = new URL(origin)
+    const forwardedProtocol = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+    const requestProtocol = forwardedProtocol || (request.socket.encrypted ? 'https' : 'http')
+    return parsedOrigin.host === request.headers.host && parsedOrigin.protocol === `${requestProtocol}:`
+  } catch {
+    return false
+  }
+}
 
 async function readAddedHomework() {
   return persistentStore.read(dataFile, [])
@@ -115,7 +128,8 @@ const httpServer = createServer(async (request, response) => {
   response.setHeader('X-Frame-Options', 'DENY')
   response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
   const origin = request.headers.origin
-  if (origin && allowedOrigins.has(origin)) {
+  const originAllowed = isAllowedRequestOrigin(origin, request)
+  if (origin && originAllowed) {
     response.setHeader('Access-Control-Allow-Origin', origin)
     response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -123,7 +137,7 @@ const httpServer = createServer(async (request, response) => {
     response.setHeader('Vary', 'Origin')
   }
   if (request.method === 'OPTIONS') {
-    if (origin && !allowedOrigins.has(origin)) { response.writeHead(403).end(); return }
+    if (!originAllowed) { response.writeHead(403).end(); return }
     response.writeHead(204).end()
     return
   }
@@ -458,7 +472,10 @@ const httpServer = createServer(async (request, response) => {
   response.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Not found' }))
 })
 
-const io = new Server(httpServer, { cors: { origin: [...allowedOrigins] } })
+const io = new Server(httpServer, {
+  cors: { origin: true },
+  allowRequest: (request, callback) => callback(null, isAllowedRequestOrigin(request.headers.origin, request))
+})
 io.use(async (socket, next) => {
   try {
     const user = await authStore.getUserForToken(socket.handshake.auth?.token || '')
@@ -501,3 +518,4 @@ async function start() {
 }
 
 start().catch(error => { console.error(error.message); process.exitCode = 1 })
+
