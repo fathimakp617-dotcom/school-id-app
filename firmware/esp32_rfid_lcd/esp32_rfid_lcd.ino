@@ -12,9 +12,17 @@
 #include "schoolid_config.h"
 
 // Configure these for the Wi-Fi network shared by the ESP32 and the server.
-const char* WIFI_SSID = vivo;
-const char* WIFI_PASSWORD = 12345678;
+const char* WIFI_SSID = SCHOOLID_WIFI_SSID;
+const char* WIFI_PASSWORD = SCHOOLID_WIFI_PASSWORD;
 const char* SCAN_URL = SCHOOLID_SCAN_URL;
+
+#ifndef SCHOOLID_RFID_DEVICE_KEY
+#define SCHOOLID_RFID_DEVICE_KEY ""
+#endif
+
+#ifndef SCHOOLID_CA_CERT
+#define SCHOOLID_CA_CERT ""
+#endif
 
 constexpr uint8_t RFID_SS_PIN = 5;
 constexpr uint8_t RFID_RST_PIN = 14;
@@ -299,3 +307,4 @@ void loop() {
   reader.PCD_StopCrypto1();
   sendScan(uid);
 }
+
