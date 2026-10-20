@@ -1,0 +1,12 @@
+#pragma once
+
+// Copy this file to schoolid_config.h and fill in your local values.
+// Keep schoolid_config.h private; do not publish Wi-Fi credentials.
+#define SCHOOLID_WIFI_SSID "YOUR_WIFI_NAME"
+#define SCHOOLID_WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+#define SCHOOLID_SCAN_URL "http://192.168.1.140:3001/api/rfid/scan"
+#define SCHOOLID_RFID_DEVICE_KEY ""
+
+// For a hosted HTTPS API, paste the trusted CA certificate PEM here and set
+// SCHOOLID_SCAN_URL to the public HTTPS endpoint. Leave empty for local HTTP tests.
+#define SCHOOLID_CA_CERT ""

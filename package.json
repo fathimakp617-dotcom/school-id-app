@@ -1,0 +1,39 @@
+{
+  "name": "school-id-app",
+  "private": true,
+  "version": "1.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "server": "node --env-file-if-exists=.env server.js",
+    "start:local": "concurrently -k \"npm:server\" \"npm:dev\"",
+    "start": "node server.js",
+    "db:import-local": "node migrate-server-data.js",
+    "build": "vite build",
+    "android:build": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "android:release": "vite build --mode android && npx cap sync android && cd android && ./gradlew assembleRelease",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "lucide-react": "^0.441.0",
+    "pg": "^8.23.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.4",
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^10.0.6",
+    "postcss": "^8.4.45",
+    "tailwindcss": "^3.4.11",
+    "vite": "^5.4.2"
+  }
+}
