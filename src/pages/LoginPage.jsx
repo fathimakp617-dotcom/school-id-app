@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Shield, Smartphone, Bell, LoaderCircle } from 'lucide-react'
 
 const quickAccounts = [
-  { label: 'Admin', email: 'admin@schoolid.app' },
   { label: 'Staff', email: 'staff@schoolid.app' },
   { label: 'Parent', email: 'parent@schoolid.app' }
 ]
@@ -27,9 +26,9 @@ export default function LoginPage({ onLogin }) {
     <div className="relative w-full max-w-md">
       <div className="mb-8 text-center"><div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-2xl shadow-blue-500/30"><Shield className="h-10 w-10 text-white"/></div><h1 className="mb-1 text-3xl font-bold text-white">SchoolID</h1><p className="text-sm text-blue-300">Smart Attendance Management System</p></div>
       <form onSubmit={submit} className="space-y-4 rounded-3xl border border-white/20 bg-white/10 p-6 shadow-2xl backdrop-blur-xl">
-        <div className="text-center"><h2 className="mb-1 text-lg font-semibold text-white">Sign in</h2><p className="text-sm text-blue-200">Choose your school account, then enter its password</p></div>
+        <div className="text-center"><h2 className="mb-1 text-lg font-semibold text-white">Sign in</h2><p className="text-sm text-blue-200">Choose Staff or Parent, or enter your Admin email</p></div>
         {error && <p role="alert" className="rounded-xl border border-red-300/30 bg-red-500/15 p-3 text-sm text-red-100">{error}</p>}
-        <div className="grid grid-cols-3 gap-2" aria-label="Choose account type">{quickAccounts.map(account => <button key={account.label} type="button" onClick={() => setEmail(account.email)} className={`rounded-xl border px-2 py-2 text-sm font-semibold transition ${email === account.email ? 'border-blue-300 bg-blue-500/30 text-white' : 'border-white/20 bg-white/5 text-blue-100 hover:bg-white/10'}`}>{account.label}</button>)}</div>
+        <div className="grid grid-cols-2 gap-2" aria-label="Quick sign-in">{quickAccounts.map(account => <button key={account.label} type="button" onClick={() => setEmail(account.email)} className={`rounded-xl border px-2 py-2 text-sm font-semibold transition ${email === account.email ? 'border-blue-300 bg-blue-500/30 text-white' : 'border-white/20 bg-white/5 text-blue-100 hover:bg-white/10'}`}>{account.label}</button>)}</div>
         <label className="block text-sm font-medium text-white" htmlFor="login-email">Email address<input id="login-email" required type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-white/20 bg-slate-900/80 px-4 py-3 text-white outline-none focus:ring-2 focus:ring-blue-400"/></label>
         <label className="block text-sm font-medium text-white" htmlFor="login-password">Password<input id="login-password" required type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} className="mt-1.5 w-full rounded-xl border border-white/20 bg-slate-900/80 px-4 py-3 text-white outline-none focus:ring-2 focus:ring-blue-400"/></label>
         <button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-500 disabled:opacity-60">{loading && <LoaderCircle className="h-4 w-4 animate-spin"/>}{loading ? 'Signing in…' : 'Sign in'}</button>
