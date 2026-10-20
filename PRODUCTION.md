@@ -8,7 +8,7 @@ Do not expose this service publicly yet. Authentication is implemented, but depl
 
 Before a public launch:
 
-1. Connect this project to a GitHub repository and attach that repository to Render. Render is connected, but this local project folder has no Git remote yet, so the live service cannot be created from it yet.
+1. This project is in the private GitHub repository `fathimakp617-dotcom/school-id-app`. Make sure the Render GitHub integration can access that private repository before creating the Blueprint.
 2. Select paid plans for the web service and PostgreSQL, then provide an Admin email, unique 12+ character password and a long random RFID device key when Render prompts for secrets.
 3. Back up existing local data, then import it with `DATABASE_URL=<hosted connection> npm run db:import-local` before switching the reader. The importer transfers the JSON records and uploaded attachments from `server-data/`, preserves existing hosted entries, and never imports active login sessions. Set `LEGACY_DATA_DIR` if local records are stored elsewhere.
 4. Confirm `/api/health` reports `ok: true`, `database: healthy`, and check the Render logs for errors. The Admin dashboard's live RFID feed requires the reader to reach the public HTTPS service.
@@ -27,3 +27,4 @@ Copy `.env.android.example` to `.env.android` and replace the example URL with t
 The provided Dockerfile and `render.yaml` build the app and serve the API and web app from one globally reachable Render service. The Blueprint creates a PostgreSQL database in Singapore; homework attachments are stored in PostgreSQL as well. The API supports Socket.IO. Configure `CORS_ORIGINS` to include `https://localhost` for the Capacitor app and any separately hosted web origin.
 
 Render can provide managed HTTPS and WebSocket support. Its free web services sleep when idle and do not preserve filesystem writes across restarts; persistent disks require a paid service. See [Render web services](https://render.com/docs/web-services), [persistent disks](https://render.com/docs/disks), and [free service limitations](https://render.com/docs/free).
+
