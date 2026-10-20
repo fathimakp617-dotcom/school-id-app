@@ -11,6 +11,8 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/server.js ./server.js
+COPY --from=build /app/serverAuth.js ./serverAuth.js
+COPY --from=build /app/serverStorage.js ./serverStorage.js
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/src/data/mockData.js ./src/data/mockData.js
 EXPOSE 10000
