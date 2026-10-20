@@ -14,7 +14,7 @@ services:
           name: schoolid-db
           property: connectionString
       - key: CORS_ORIGINS
-        value: https://localhost
+        value: https://localhost,capacitor://localhost
       - key: SCHOOLID_ADMIN_EMAIL
         sync: false
       - key: SCHOOLID_ADMIN_PASSWORD
@@ -29,3 +29,4 @@ databases:
     postgresMajorVersion: "17"
     region: singapore
     plan: 0.5c-1g
+
