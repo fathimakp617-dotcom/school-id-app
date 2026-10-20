@@ -1,0 +1,9 @@
+{
+	"appId": "com.schoolid.portal",
+	"appName": "SchoolID",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "http",
+		"cleartext": true
+	}
+}

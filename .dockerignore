@@ -1,0 +1,9 @@
+node_modules
+dist
+android
+server-data
+.git
+.env
+.env.*
+!.env.*.example
+firmware/*/schoolid_config.h

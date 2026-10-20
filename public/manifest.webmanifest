@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "SchoolID School Portal",
+  "short_name": "SchoolID",
+  "description": "School attendance, homework, student ID cards and fee management.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1f4b",
+  "theme_color": "#0b1f4b",
+  "icons": [
+    { "src": "/schoolid-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
