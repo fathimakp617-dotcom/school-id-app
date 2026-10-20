@@ -362,8 +362,21 @@ const httpServer = createServer(async (request, response) => {
       if (!record.name?.trim() || !record.class?.trim() || !record.rfidUID?.trim()) return sendJson(response, 400, { error: 'Student name, class and RFID UID are required.' })
       const students = [...mockStudents, ...await readAddedStudents()]
       const rfidUID = record.rfidUID.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
-      if (students.some(student => student.rfidUID.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === rfidUID)) return sendJson(response, 409, { error: `RFID card ${rfidUID} is already assigned.` })
       const requestedId = typeof record.id === 'string' && /^S\d{3,}$/i.test(record.id.trim()) ? record.id.trim().toUpperCase() : null
+      const existingCard = students.find(student => student.rfidUID.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === rfidUID)
+      if (existingCard) {
+        const sameStudent = existingCard.name.trim().toLowerCase() === record.name.trim().toLowerCase() && existingCard.class.trim().toLowerCase() === record.class.trim().toLowerCase()
+        if (!requestedId || !sameStudent || existingCard.id === requestedId) return sendJson(response, 409, { error: `RFID card ${rfidUID} is already assigned.` })
+        if (students.some(student => String(student.id).toUpperCase() === requestedId)) return sendJson(response, 409, { error: `Student ID ${requestedId} is already in use.` })
+        const added = await readAddedStudents()
+        const existingIndex = added.findIndex(student => student.rfidUID.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === rfidUID)
+        if (existingIndex < 0) return sendJson(response, 409, { error: `RFID card ${rfidUID} is already assigned.` })
+        const saved = { ...added[existingIndex], ...record, id: requestedId, name: record.name.trim(), class: record.class.trim(), rfidUID }
+        added[existingIndex] = saved
+        await writeJson(studentsFile, added)
+        io.to('role:admin').to(teacherRoom(saved.class)).emit('student:created', saved)
+        return sendJson(response, 200, saved)
+      }
       if (requestedId && students.some(student => String(student.id).toUpperCase() === requestedId)) return sendJson(response, 409, { error: `Student ID ${requestedId} is already in use.` })
       const nextNumber = students.reduce((max, student) => Math.max(max, Number(student.id.replace(/^S/i, '')) || 0), 0) + 1
       const colors = ['bg-cyan-600', 'bg-rose-500', 'bg-amber-500', 'bg-indigo-500', 'bg-teal-600']
