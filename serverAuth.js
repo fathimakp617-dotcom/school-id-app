@@ -38,6 +38,12 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
     return expected.length === actual.length && timingSafeEqual(expected, actual)
   }
 
+  async function updatePasswordIfChanged(user, password) {
+    if (await verifyPassword(password, user.passwordSalt, user.passwordHash)) return
+    const { salt, passwordHash } = await hashPassword(password)
+    await updateJson(usersFile, [], current => current.map(item => item.id === user.id ? { ...item, passwordSalt: salt, passwordHash } : item))
+  }
+
   function publicUser(user) {
     const { passwordHash, passwordSalt, ...safe } = user
     return safe
@@ -45,19 +51,24 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
 
   async function bootstrapAdmin() {
     const list = await users()
-    if (list.some(user => user.role === 'admin')) return
     const email = String(process.env.SCHOOLID_ADMIN_EMAIL || '').trim().toLowerCase()
     const password = process.env.SCHOOLID_ADMIN_PASSWORD || ''
     if (!email && !password) return
-    if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 12) throw new Error('Set a valid SCHOOLID_ADMIN_EMAIL and a unique SCHOOLID_ADMIN_PASSWORD of at least 12 characters before starting the server.')
+    if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 8) throw new Error('Set a valid SCHOOLID_ADMIN_EMAIL and a SCHOOLID_ADMIN_PASSWORD of at least 8 characters before starting the server.')
+    const existing = list.find(user => user.role === 'admin')
+    if (existing) {
+      if (existing.email !== email) throw new Error('SCHOOLID_ADMIN_EMAIL does not match the existing Admin account.')
+      await updatePasswordIfChanged(existing, password)
+      return
+    }
     const { salt, passwordHash } = await hashPassword(password)
     const admin = { id: randomUUID(), name: 'School Administrator', email, role: 'admin', passwordSalt: salt, passwordHash, createdAt: new Date().toISOString(), active: true }
     await updateJson(usersFile, [], current => current.some(user => user.role === 'admin') ? current : [...current, admin])
     console.log('Bootstrapped the initial SchoolID Admin account.')
   }
 
-  // Optional fixed Staff and Parent sign-ins are configured as server secrets.
-  // Existing accounts are left untouched so a restart never resets passwords.
+  // Fixed Staff and Parent sign-ins are configured as server secrets.
+  // Password changes in Render are applied to these fixed accounts at startup.
   async function bootstrapFixedAccounts() {
     const definitions = [
       {
@@ -80,8 +91,8 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
       const email = String(definition.email || '').trim().toLowerCase()
       const password = definition.password || ''
       if (!email && !password) continue
-      if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 12) {
-        throw new Error(`Set a valid SCHOOLID_${definition.role === 'teacher' ? 'STAFF' : 'PARENT'}_EMAIL and a unique SCHOOLID_${definition.role === 'teacher' ? 'STAFF' : 'PARENT'}_PASSWORD of at least 12 characters.`)
+      if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 8) {
+        throw new Error(`Set a valid SCHOOLID_${definition.role === 'teacher' ? 'STAFF' : 'PARENT'}_EMAIL and a SCHOOLID_${definition.role === 'teacher' ? 'STAFF' : 'PARENT'}_PASSWORD of at least 8 characters.`)
       }
       if (definition.role === 'teacher' && !String(definition.class || '').trim()) {
         throw new Error('Set SCHOOLID_STAFF_CLASS for the fixed Staff account.')
@@ -94,6 +105,7 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
       const existing = list.find(user => user.email === email)
       if (existing) {
         if (existing.role !== definition.role) throw new Error(`The configured fixed ${definition.role} email is already used by a different account role.`)
+        await updatePasswordIfChanged(existing, password)
         continue
       }
 
