@@ -16,7 +16,7 @@ services:
       - key: CORS_ORIGINS
         value: https://localhost,capacitor://localhost
       - key: SCHOOLID_ADMIN_EMAIL
-        value: admin@schoolid.app
+        sync: false
       - key: SCHOOLID_ADMIN_PASSWORD
         sync: false
       - key: SCHOOLID_STAFF_EMAIL
