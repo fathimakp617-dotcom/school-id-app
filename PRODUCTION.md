@@ -6,6 +6,8 @@ The project now has authenticated Admin, Teacher and Parent accounts, role check
 
 Do not expose this service publicly yet. Authentication is implemented, but deployment, durable database storage, and operational recovery still need to be configured.
 
+The current Render configuration uses free plans at the user's request for a temporary launch. Render's free web service can spin down when idle, and its free Postgres database expires after 30 days. This setup is for a short trial, not uninterrupted attendance monitoring or long-term student records.
+
 Before a public launch:
 
 1. This project is in the private GitHub repository `fathimakp617-dotcom/school-id-app`. Make sure the Render GitHub integration can access that private repository before creating the Blueprint.
