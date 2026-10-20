@@ -24,7 +24,7 @@ const sessionsFile = resolve(dataDir, 'sessions.json')
 const attachmentsDir = resolve(dataDir, 'attachments')
 const port = Number(process.env.PORT || 3001)
 let persistentStore
-const authStore = createAuthStore({ usersFile, sessionsFile, dataStore: { read: (...args) => persistentStore.read(...args), write: (...args) => persistentStore.write(...args) } })
+const authStore = createAuthStore({ usersFile, sessionsFile, dataStore: { read: (...args) => persistentStore.read(...args), write: (...args) => persistentStore.write(...args), update: (...args) => persistentStore.update(...args) } })
 const allowedOrigins = new Set((process.env.CORS_ORIGINS || 'https://localhost,capacitor://localhost').split(',').map(origin => origin.trim()).filter(Boolean))
 if (process.env.NODE_ENV !== 'production') allowedOrigins.add('http://localhost:5173')
 
