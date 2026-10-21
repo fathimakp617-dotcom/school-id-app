@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: schoolid-app
+    name: schoolid-app-second
     runtime: docker
     region: singapore
     plan: free
@@ -13,31 +13,25 @@ services:
         fromDatabase:
           name: schoolid-db
           property: connectionString
+      - key: SCHOOLID_DATA_NAMESPACE
+        value: schoolid_second
       - key: CORS_ORIGINS
         value: https://localhost,capacitor://localhost
       - key: SCHOOLID_ADMIN_EMAIL
-        value: admin@schoolid.app
+        value: admin@schoolid-second.app
       - key: SCHOOLID_ADMIN_PASSWORD
-        sync: false
+        generateValue: true
       - key: SCHOOLID_STAFF_EMAIL
-        value: staff@schoolid.app
+        value: staff@schoolid-second.app
       - key: SCHOOLID_STAFF_PASSWORD
-        sync: false
+        generateValue: true
       - key: SCHOOLID_STAFF_CLASS
         value: SA1
       - key: SCHOOLID_PARENT_EMAIL
-        value: parent@schoolid.app
+        value: parent@schoolid-second.app
       - key: SCHOOLID_PARENT_PASSWORD
-        sync: false
+        generateValue: true
       - key: SCHOOLID_PARENT_STUDENT_ID
-        value: S006
+        value: S001
       - key: SCHOOLID_RFID_DEVICE_KEY
-        sync: false
-
-databases:
-  - name: schoolid-db
-    databaseName: schoolid
-    user: schoolid
-    postgresMajorVersion: "17"
-    region: singapore
-    plan: free
+        generateValue: true
