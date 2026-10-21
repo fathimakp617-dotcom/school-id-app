@@ -1,6 +1,6 @@
 {
   "appId": "com.schoolid.secondportal",
-  "appName": "SchoolID",
+  "appName": "SchoolID 2",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",

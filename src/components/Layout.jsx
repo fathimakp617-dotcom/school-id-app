@@ -52,7 +52,7 @@ export default function Layout({ user, onLogout, navItems, activeTab, setActiveT
               🏫
             </div>
             <div>
-              <div className="font-bold text-base">SchoolID</div>
+              <div className="font-bold text-base">SchoolID 2</div>
               <div className="text-white/50 text-xs capitalize">{user.role} Portal</div>
             </div>
           </div>
@@ -108,7 +108,7 @@ export default function Layout({ user, onLogout, navItems, activeTab, setActiveT
           <button type="button" aria-label="Open navigation menu" aria-controls="school-navigation" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 rounded-lg hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
-          <span className="font-bold text-gray-800">SchoolID</span>
+          <span className="font-bold text-gray-800">SchoolID 2</span>
         </header>
 
         {/* Page content */}

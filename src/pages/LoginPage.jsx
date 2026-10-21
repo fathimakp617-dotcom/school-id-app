@@ -25,7 +25,7 @@ export default function LoginPage({ onLogin }) {
   return <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-4">
     <div className="absolute inset-0 overflow-hidden pointer-events-none"><div className="absolute left-20 top-20 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl"/><div className="absolute bottom-20 right-20 h-96 w-96 rounded-full bg-purple-500/10 blur-3xl"/></div>
     <div className="relative w-full max-w-md">
-      <div className="mb-8 text-center"><div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-2xl shadow-blue-500/30"><Shield className="h-10 w-10 text-white"/></div><h1 className="mb-1 text-3xl font-bold text-white">SchoolID</h1><p className="text-sm text-blue-300">Smart Attendance Management System</p></div>
+      <div className="mb-8 text-center"><div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-2xl shadow-blue-500/30"><Shield className="h-10 w-10 text-white"/></div><h1 className="mb-1 text-3xl font-bold text-white">SchoolID 2</h1><p className="text-sm text-blue-300">Smart Attendance Management System</p></div>
       <form onSubmit={submit} className="space-y-4 rounded-3xl border border-white/20 bg-white/10 p-6 shadow-2xl backdrop-blur-xl">
         <div className="text-center"><h2 className="mb-1 text-lg font-semibold text-white">Sign in</h2><p className="text-sm text-blue-200">Choose your school account, then enter its password</p></div>
         {error && <p role="alert" className="rounded-xl border border-red-300/30 bg-red-500/15 p-3 text-sm text-red-100">{error}</p>}

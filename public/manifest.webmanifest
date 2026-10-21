@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "SchoolID School Portal",
-  "short_name": "SchoolID",
+  "name": "SchoolID 2 School Portal",
+  "short_name": "SchoolID 2",
   "description": "School attendance, homework, student ID cards and fee management.",
   "start_url": "/",
   "scope": "/",
