@@ -9,6 +9,9 @@ const { Pool } = pg
 // imported lazily on first read so the school can migrate its current records.
 export async function createJsonStore({ dataDir, connectionString = process.env.DATABASE_URL }) {
   const pool = connectionString ? new Pool({ connectionString, max: 5, connectionTimeoutMillis: 10000 }) : null
+  const namespace = String(process.env.SCHOOLID_DATA_NAMESPACE || '').trim()
+  if (namespace && !/^[a-z0-9_-]{1,48}$/i.test(namespace)) throw new Error('SCHOOLID_DATA_NAMESPACE must contain only letters, numbers, underscores or hyphens.')
+  const storageKey = key => namespace ? `${namespace}/${key}` : key
   const localQueues = new Map()
   if (pool) {
     await pool.query(`
@@ -28,7 +31,7 @@ export async function createJsonStore({ dataDir, connectionString = process.env.
     `)
   }
 
-  const keyFor = file => relative(dataDir, resolve(file)).split(sep).join('/')
+  const keyFor = file => storageKey(relative(dataDir, resolve(file)).split(sep).join('/'))
 
   async function read(file, fallback) {
     if (pool) {
@@ -99,7 +102,7 @@ export async function createJsonStore({ dataDir, connectionString = process.env.
 
   async function readAttachment(filename) {
     if (!pool) return null
-    const result = await pool.query('SELECT content_type, content FROM schoolid_attachments WHERE filename = $1', [filename])
+    const result = await pool.query('SELECT content_type, content FROM schoolid_attachments WHERE filename = $1', [storageKey(filename)])
     return result.rowCount ? result.rows[0] : null
   }
 
@@ -108,7 +111,7 @@ export async function createJsonStore({ dataDir, connectionString = process.env.
     const conflictAction = overwrite
       ? 'DO UPDATE SET content_type = EXCLUDED.content_type, content = EXCLUDED.content, updated_at = now()'
       : 'DO NOTHING'
-    await pool.query(`INSERT INTO schoolid_attachments (filename, content_type, content) VALUES ($1, $2, $3) ON CONFLICT (filename) ${conflictAction}`, [filename, contentType, bytes])
+    await pool.query(`INSERT INTO schoolid_attachments (filename, content_type, content) VALUES ($1, $2, $3) ON CONFLICT (filename) ${conflictAction}`, [storageKey(filename), contentType, bytes])
   }
 
   return { read, write, update, readAttachment, writeAttachment, pool, databaseConfigured: Boolean(pool), close: () => pool?.end() }
