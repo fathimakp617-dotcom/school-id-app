@@ -177,7 +177,6 @@ function AccountsTab() {
     <form onSubmit={submit} className="card grid gap-4 sm:grid-cols-2">
       <label className="text-sm font-medium text-gray-700">Account type<select value={form.role} onChange={event => setForm({ ...form, role: event.target.value, studentId: '', className: '' })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-3"><option value="parent">Parent</option><option value="teacher">Teacher</option></select></label>
       <label className="text-sm font-medium text-gray-700">Full name<input required value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-3"/></label>
-      <label className="text-sm font-medium text-gray-700">Email<input required type="email" autoComplete="off" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-3"/></label>
       <label className="text-sm font-medium text-gray-700">Temporary password<input required type="password" minLength={12} autoComplete="new-password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-3"/><span className="mt-1 block text-xs text-gray-400">At least 12 characters</span></label>
       {form.role === 'parent' ? <label className="text-sm font-medium text-gray-700 sm:col-span-2">Linked student<select required value={form.studentId} onChange={event => setForm({ ...form, studentId: event.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-3"><option value="">Choose one student</option>{students.map(student => <option key={student.id} value={student.id}>{student.name} · {student.id} · Class {student.class}</option>)}</select></label> : <><label className="text-sm font-medium text-gray-700">Assigned class<input required value={form.className} onChange={event => setForm({ ...form, className: event.target.value })} placeholder="e.g. SA1" className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-3"/></label><label className="text-sm font-medium text-gray-700">Subject<input value={form.subject} onChange={event => setForm({ ...form, subject: event.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-3"/></label></>}
       <button disabled={saving} className="btn-primary justify-center bg-purple-600 hover:bg-purple-700 disabled:opacity-60 sm:col-span-2">{saving ? 'Creating…' : 'Create account'}</button>
@@ -330,24 +329,46 @@ function RegisterStudentTab() {
 
 // ---- REPORTS TAB ----
 function ReportsTab() {
+  const attendance = useAttendance()
+  const students = useStudents()
+  const exportReport = (report) => {
+    const now = new Date()
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const rowsForReport = {
+      monthly: [['Student', 'Class', 'Type', 'Timestamp'], ...attendance.filter(row => row.timestamp.startsWith(monthKey)).map(row => [row.studentName, row.class, row.type, row.timestamp])],
+      student: [['Student', 'Student ID', 'Class', 'Attendance records'], ...students.map(student => [student.name, student.id, student.class, attendance.filter(row => row.studentId === student.id).length])],
+      class: [['Class', 'Students', 'Attendance records'], ...[...new Set(students.map(student => student.class))].sort().map(className => [className, students.filter(student => student.class === className).length, attendance.filter(row => row.class === className).length])],
+      late: [['Student', 'Class', 'Timestamp'], ...attendance.filter(row => row.type === 'arrival' && new Date(row.timestamp).getHours() * 60 + new Date(row.timestamp).getMinutes() > 8 * 60 + 30).map(row => [row.studentName, row.class, row.timestamp])],
+    }
+    const quote = value => `"${String(value ?? '').replaceAll('"', '""')}"`
+    const csv = rowsForReport[report.key].map(row => row.map(quote).join(',')).join('\r\n')
+    const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${report.key}-attendance-${now.toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
       <div className="grid gap-4">
         {[
-          { title: 'Monthly Attendance Report', desc: 'October 2026 — All students', icon: '📅', color: 'bg-blue-50 border-blue-200' },
-          { title: 'Student Attendance Summary', desc: 'Individual student records', icon: '🎓', color: 'bg-green-50 border-green-200' },
-          { title: 'Class-wise Attendance', desc: 'Breakdown by class section', icon: '🏫', color: 'bg-purple-50 border-purple-200' },
-          { title: 'Late Arrivals Report', desc: 'Students arriving after 8:30 AM', icon: '⏰', color: 'bg-orange-50 border-orange-200' },
+          { key: 'monthly', title: 'Monthly Attendance Report', desc: `${new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })} — all attendance records`, icon: '📅', color: 'bg-blue-50 border-blue-200' },
+          { key: 'student', title: 'Student Attendance Summary', desc: 'Attendance record count for each student', icon: '🎓', color: 'bg-green-50 border-green-200' },
+          { key: 'class', title: 'Class-wise Attendance', desc: 'Students and attendance record counts by class', icon: '🏫', color: 'bg-purple-50 border-purple-200' },
+          { key: 'late', title: 'Late Arrivals Report', desc: 'Arrival scans recorded after 8:30 AM', icon: '⏰', color: 'bg-orange-50 border-orange-200' },
         ].map(r => (
-          <div key={r.title} className={`card border ${r.color} flex items-center gap-4 cursor-pointer hover:shadow-md transition-shadow`}>
+          <div key={r.title} className={`card border ${r.color} flex items-center gap-4 transition-shadow hover:shadow-md`}>
             <div className="text-3xl">{r.icon}</div>
             <div className="flex-1">
               <h3 className="font-semibold text-gray-900">{r.title}</h3>
               <p className="text-sm text-gray-500">{r.desc}</p>
             </div>
             <div className="flex gap-2">
-              <button className="btn-secondary py-1.5 px-3 text-xs">
+              <button type="button" onClick={() => exportReport(r)} aria-label={`Download ${r.title} as CSV`} className="btn-secondary py-1.5 px-3 text-xs">
                 <Download className="w-3 h-3" /> CSV
               </button>
             </div>
