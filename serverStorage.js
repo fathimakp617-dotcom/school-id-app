@@ -38,6 +38,7 @@ export async function createJsonStore({ dataDir, connectionString = process.env.
       const key = keyFor(file)
       const result = await pool.query('SELECT record_value FROM schoolid_data WHERE record_key = $1', [key])
       if (result.rowCount) return result.rows[0].record_value
+      if (namespace) return fallback
       try {
         const legacyValue = JSON.parse(await readFile(file, 'utf8'))
         await pool.query('INSERT INTO schoolid_data (record_key, record_value) VALUES ($1, $2::jsonb) ON CONFLICT (record_key) DO NOTHING', [key, JSON.stringify(legacyValue)])
@@ -72,7 +73,7 @@ export async function createJsonStore({ dataDir, connectionString = process.env.
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key])
         const result = await client.query('SELECT record_value FROM schoolid_data WHERE record_key = $1 FOR UPDATE', [key])
         let current = result.rowCount ? result.rows[0].record_value : fallback
-        if (!result.rowCount) {
+        if (!result.rowCount && !namespace) {
           try { current = JSON.parse(await readFile(file, 'utf8')) }
           catch (error) { if (error.code !== 'ENOENT') throw error }
         }
