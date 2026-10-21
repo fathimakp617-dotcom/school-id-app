@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { Shield, Smartphone, Bell, LoaderCircle } from 'lucide-react'
 
 const quickAccounts = [
-  { label: 'Admin', email: 'admin@schoolid.app' },
-  { label: 'Staff', email: 'staff@schoolid.app' },
-  { label: 'Parent', email: 'parent@schoolid.app' }
+  { label: 'Admin', email: 'admin@schoolid-second.app' },
+  { label: 'Staff', email: 'staff@schoolid-second.app' },
+  { label: 'Parent', email: 'parent@schoolid-second.app' }
 ]
 
 export default function LoginPage({ onLogin }) {
