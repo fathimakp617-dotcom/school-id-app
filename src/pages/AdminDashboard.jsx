@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import Layout from '../components/Layout'
 import { mockStudents, mockAttendance, mockHomework, formatTime, formatDate } from '../data/mockData'
-import { addStudent, API_URL, useStudents } from '../data/studentStore'
+import { addStudent, removeStudent, API_URL, useStudents } from '../data/studentStore'
 import { createAccount } from '../data/authStore'
 import { useRfidScans } from '../data/rfidScanStore'
 import { useAttendance } from '../data/attendanceStore'
@@ -86,15 +86,26 @@ function DashboardTab({ onViewScans }) {
 // ---- STUDENTS TAB ----
 function StudentsTab({ onQuickAdd }) {
   const [search, setSearch] = useState('')
+  const [removingId, setRemovingId] = useState('')
+  const [error, setError] = useState('')
   const students = useStudents()
   const filtered = students.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     s.class.toLowerCase().includes(search.toLowerCase())
   )
+  const handleRemove = async student => {
+    if (!window.confirm(`Remove ${student.name} (${student.id})? Their ID card and linked Parent access will be disabled.`)) return
+    setRemovingId(student.id)
+    setError('')
+    try { await removeStudent(student.id) }
+    catch (removeError) { setError(removeError.message || 'Could not remove the student.') }
+    finally { setRemovingId('') }
+  }
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3"><h1 className="text-2xl font-bold text-gray-900">Students ({students.length})</h1><button className="btn-primary bg-purple-600 hover:bg-purple-700" onClick={onQuickAdd}><Plus className="h-4 w-4"/> Add student</button></div>
+      {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -115,6 +126,7 @@ function StudentsTab({ onQuickAdd }) {
               <p className="text-xs font-mono text-gray-400 mt-0.5">RFID: {s.rfidUID}</p>
             </div>
             <div className="text-xs text-gray-400">{s.id}</div>
+            <button type="button" onClick={() => handleRemove(s)} disabled={removingId === s.id} aria-label={`Remove ${s.name}`} title="Remove student" className="rounded-lg p-2 text-red-600 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-50"><Trash2 className="h-4 w-4"/></button>
           </div>
         ))}
       </div>

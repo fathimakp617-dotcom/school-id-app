@@ -179,5 +179,11 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
     return (await users()).map(publicUser)
   }
 
-  return { bootstrapAdmin, bootstrapFixedAccounts, createAccount, login, getUserForToken, revokeToken, listAccounts }
+  async function deactivateParentAccountsForStudent(studentId) {
+    await updateJson(usersFile, [], current => current.map(user =>
+      user.role === 'parent' && user.studentId === studentId ? { ...user, active: false } : user
+    ))
+  }
+
+  return { bootstrapAdmin, bootstrapFixedAccounts, createAccount, login, getUserForToken, revokeToken, listAccounts, deactivateParentAccountsForStudent }
 }
