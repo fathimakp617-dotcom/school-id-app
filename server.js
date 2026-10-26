@@ -14,6 +14,7 @@ const dataDir = resolve(process.env.DATA_DIR || resolve(here, 'server-data'))
 const webDir = resolve(here, 'dist')
 const dataFile = resolve(dataDir, 'homework.json')
 const studentsFile = resolve(dataDir, 'students.json')
+const deletedStudentsFile = resolve(dataDir, 'deleted-students.json')
 const completionsFile = resolve(dataDir, 'homework-completions.json')
 const scansFile = resolve(dataDir, 'rfid-scans.json')
 const attendanceFile = resolve(dataDir, 'attendance.json')
@@ -47,6 +48,19 @@ async function readAddedHomework() {
 
 async function readAddedStudents() {
   return persistentStore.read(studentsFile, [])
+}
+
+async function readAllStudents() {
+  return [...mockStudents, ...await readAddedStudents()]
+}
+
+async function readActiveStudents() {
+  const [students, deletedIds] = await Promise.all([
+    readAllStudents(),
+    persistentStore.read(deletedStudentsFile, []),
+  ])
+  const deleted = new Set(Array.isArray(deletedIds) ? deletedIds : [])
+  return students.filter(student => !deleted.has(student.id))
 }
 
 async function readCompletions() {
@@ -131,7 +145,7 @@ const httpServer = createServer(async (request, response) => {
   const originAllowed = isAllowedRequestOrigin(origin, request)
   if (origin && originAllowed) {
     response.setHeader('Access-Control-Allow-Origin', origin)
-    response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
     response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
     response.setHeader('Access-Control-Max-Age', '600')
     response.setHeader('Vary', 'Origin')
@@ -196,7 +210,7 @@ const httpServer = createServer(async (request, response) => {
       try {
         const data = await readRequestJson(request)
         if (data.role === 'parent') {
-          const student = [...mockStudents, ...await readAddedStudents()].find(item => item.id === data.studentId)
+          const student = (await readActiveStudents()).find(item => item.id === data.studentId)
           if (!student) return sendJson(response, 400, { error: 'Choose a registered student for this Parent account.' })
         }
         const account = await authStore.createAccount(data)
@@ -211,7 +225,7 @@ const httpServer = createServer(async (request, response) => {
     const added = await readAddedHomework()
     const homework = [...mockHomework, ...added]
     if (currentUser.role === 'parent') {
-      const student = [...mockStudents, ...await readAddedStudents()].find(item => item.id === currentUser.studentId)
+      const student = (await readActiveStudents()).find(item => item.id === currentUser.studentId)
       return sendJson(response, 200, student ? homework.filter(item => item.class === student.class) : [])
     }
     return sendJson(response, 200, currentUser.role === 'teacher' ? homework.filter(item => item.class === currentUser.class) : homework)
@@ -273,7 +287,7 @@ const httpServer = createServer(async (request, response) => {
     return
   }
   if (request.method === 'GET' && url.pathname === '/api/students') {
-    const students = [...mockStudents, ...await readAddedStudents()]
+    const students = await readActiveStudents()
     if (currentUser.role === 'parent') return sendJson(response, 200, students.filter(item => item.id === currentUser.studentId))
     return sendJson(response, 200, currentUser.role === 'teacher' ? students.filter(item => item.class === currentUser.class) : students)
   }
@@ -328,7 +342,7 @@ const httpServer = createServer(async (request, response) => {
       const { feeAmount } = await readSettings()
       const amount = feeAmount
       if (!studentId || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return sendJson(response, 400, { error: 'Valid student and fee amount are required.' })
-      const student = [...mockStudents, ...await readAddedStudents()].find(item => item.id === studentId)
+      const student = (await readActiveStudents()).find(item => item.id === studentId)
       if (!student) return sendJson(response, 404, { error: 'Student not found.' })
       const fees = await readFees()
       const record = { studentId, amount: Number(amount), status: 'pending', paymentReference: String(paymentReference).slice(0, 100), requestedAt: new Date().toISOString(), confirmedAt: null }
@@ -360,14 +374,15 @@ const httpServer = createServer(async (request, response) => {
     try {
       const record = await readRequestJson(request)
       if (!record.name?.trim() || !record.class?.trim() || !record.rfidUID?.trim()) return sendJson(response, 400, { error: 'Student name, class and RFID UID are required.' })
-      const students = [...mockStudents, ...await readAddedStudents()]
+      const allStudents = await readAllStudents()
+      const students = await readActiveStudents()
       const rfidUID = record.rfidUID.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
       const requestedId = typeof record.id === 'string' && /^S\d{3,}$/i.test(record.id.trim()) ? record.id.trim().toUpperCase() : null
       const existingCard = students.find(student => student.rfidUID.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === rfidUID)
       if (existingCard) {
         const sameStudent = existingCard.name.trim().toLowerCase() === record.name.trim().toLowerCase() && existingCard.class.trim().toLowerCase() === record.class.trim().toLowerCase()
         if (!requestedId || !sameStudent || existingCard.id === requestedId) return sendJson(response, 409, { error: `RFID card ${rfidUID} is already assigned.` })
-        if (students.some(student => String(student.id).toUpperCase() === requestedId)) return sendJson(response, 409, { error: `Student ID ${requestedId} is already in use.` })
+        if (allStudents.some(student => String(student.id).toUpperCase() === requestedId)) return sendJson(response, 409, { error: `Student ID ${requestedId} is already in use.` })
         const added = await readAddedStudents()
         const existingIndex = added.findIndex(student => student.rfidUID.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === rfidUID)
         if (existingIndex < 0) return sendJson(response, 409, { error: `RFID card ${rfidUID} is already assigned.` })
@@ -377,8 +392,8 @@ const httpServer = createServer(async (request, response) => {
         io.to('role:admin').to(teacherRoom(saved.class)).emit('student:created', saved)
         return sendJson(response, 200, saved)
       }
-      if (requestedId && students.some(student => String(student.id).toUpperCase() === requestedId)) return sendJson(response, 409, { error: `Student ID ${requestedId} is already in use.` })
-      const nextNumber = students.reduce((max, student) => Math.max(max, Number(student.id.replace(/^S/i, '')) || 0), 0) + 1
+      if (requestedId && allStudents.some(student => String(student.id).toUpperCase() === requestedId)) return sendJson(response, 409, { error: `Student ID ${requestedId} is already in use.` })
+      const nextNumber = allStudents.reduce((max, student) => Math.max(max, Number(student.id.replace(/^S/i, '')) || 0), 0) + 1
       const colors = ['bg-cyan-600', 'bg-rose-500', 'bg-amber-500', 'bg-indigo-500', 'bg-teal-600']
       const saved = {
         ...record,
@@ -398,6 +413,24 @@ const httpServer = createServer(async (request, response) => {
       sendJson(response, 400, { error: 'Invalid request body' })
     }
     return
+  }
+  if (request.method === 'DELETE' && url.pathname.startsWith('/api/students/')) {
+    if (!requireRole(response, currentUser, ['admin'])) return
+    let studentId
+    try { studentId = decodeURIComponent(url.pathname.slice('/api/students/'.length)).trim() }
+    catch { return sendJson(response, 400, { error: 'Valid student ID is required.' }) }
+    if (!studentId || studentId.includes('/')) return sendJson(response, 400, { error: 'Valid student ID is required.' })
+    try {
+      const student = (await readActiveStudents()).find(item => item.id === studentId)
+      if (!student) return sendJson(response, 404, { error: 'Student not found or already removed.' })
+      await persistentStore.update(deletedStudentsFile, [], current => [...new Set([...(Array.isArray(current) ? current : []), student.id])])
+      await authStore.deactivateParentAccountsForStudent(student.id)
+      io.to('school:all').emit('student:deleted', { id: student.id })
+      io.in(parentRoom(student.id)).disconnectSockets(true)
+      return sendJson(response, 200, { ok: true, studentId: student.id })
+    } catch {
+      return sendJson(response, 500, { error: 'Could not remove this student. Please try again.' })
+    }
   }
   if (request.method === 'GET' && url.pathname === '/api/homework/completions') {
     const studentId = url.searchParams.get('studentId')
@@ -432,7 +465,7 @@ const httpServer = createServer(async (request, response) => {
       const { uid } = await readRequestJson(request)
       if (!uid?.trim()) return sendJson(response, 400, { error: 'RFID UID is required.' })
       const normalizedUID = uid.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
-      const student = [...mockStudents, ...await readAddedStudents()].find(item => item.rfidUID.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedUID)
+      const student = (await readActiveStudents()).find(item => item.rfidUID.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedUID)
       const event = {
         id: randomUUID(),
         uid: normalizedUID,
@@ -505,7 +538,7 @@ io.on('connection', async socket => {
   socket.join(`role:${user.role}`)
   if (user.role === 'teacher') { socket.join(homeworkRoom(user.class)); socket.join(teacherRoom(user.class)) }
   if (user.role === 'parent') socket.join(parentRoom(user.studentId))
-  const allStudents = [...mockStudents, ...await readAddedStudents()]
+  const allStudents = await readActiveStudents()
   const visibleStudents = user.role === 'admin' ? allStudents : user.role === 'teacher' ? allStudents.filter(item => item.class === user.class) : allStudents.filter(item => item.id === user.studentId)
   const visibleClasses = new Set(visibleStudents.map(item => item.class))
   if (user.role === 'parent') for (const className of visibleClasses) socket.join(homeworkRoom(className))
