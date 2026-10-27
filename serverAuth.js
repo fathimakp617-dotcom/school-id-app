@@ -69,7 +69,8 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
 
   // Fixed Staff and Parent sign-ins are configured as server secrets.
   // Password changes in Render are applied to these fixed accounts at startup.
-  async function bootstrapFixedAccounts() {
+  async function bootstrapFixedAccounts({ activeStudentIds = [] } = {}) {
+    const activeIds = new Set(activeStudentIds)
     const definitions = [
       {
         role: 'teacher',
@@ -83,7 +84,7 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
         email: process.env.SCHOOLID_PARENT_EMAIL,
         password: process.env.SCHOOLID_PARENT_PASSWORD,
         name: process.env.SCHOOLID_PARENT_NAME || 'School Parent',
-        studentId: process.env.SCHOOLID_PARENT_STUDENT_ID
+        studentIds: String(process.env.SCHOOLID_PARENT_STUDENT_IDS || process.env.SCHOOLID_PARENT_STUDENT_ID || '').split(',').map(id => id.trim()).filter(id => id && (!activeIds.size || activeIds.has(id)))
       }
     ]
 
@@ -97,7 +98,7 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
       if (definition.role === 'teacher' && !String(definition.class || '').trim()) {
         throw new Error('Set SCHOOLID_STAFF_CLASS for the fixed Staff account.')
       }
-      if (definition.role === 'parent' && !String(definition.studentId || '').trim()) {
+      if (definition.role === 'parent' && !definition.studentIds.length) {
         throw new Error('Set SCHOOLID_PARENT_STUDENT_ID for the fixed Parent account.')
       }
 
@@ -106,6 +107,9 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
       if (existing) {
         if (existing.role !== definition.role) throw new Error(`The configured fixed ${definition.role} email is already used by a different account role.`)
         await updatePasswordIfChanged(existing, password)
+        await updateJson(usersFile, [], current => current.map(item => item.id === existing.id
+          ? { ...item, active: true, ...(definition.role === 'teacher' ? { class: String(definition.class).trim() } : {}), ...(definition.role === 'parent' ? { studentId: definition.studentIds[0], studentIds: definition.studentIds } : {}) }
+          : item))
         continue
       }
 
@@ -116,7 +120,7 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
         createdAt: new Date().toISOString(), active: true
       }
       if (definition.role === 'teacher') user.class = String(definition.class).trim()
-      if (definition.role === 'parent') user.studentId = String(definition.studentId).trim()
+      if (definition.role === 'parent') { user.studentId = definition.studentIds[0]; user.studentIds = definition.studentIds }
       await updateJson(usersFile, [], current => {
         if (current.some(item => item.email === email)) return current
         return [...current, user]
@@ -180,9 +184,13 @@ export function createAuthStore({ usersFile, sessionsFile, dataStore }) {
   }
 
   async function deactivateParentAccountsForStudent(studentId) {
-    await updateJson(usersFile, [], current => current.map(user =>
-      user.role === 'parent' && user.studentId === studentId ? { ...user, active: false } : user
-    ))
+    await updateJson(usersFile, [], current => current.map(user => {
+      if (user.role !== 'parent') return user
+      const linkedIds = Array.isArray(user.studentIds) ? user.studentIds : user.studentId ? [user.studentId] : []
+      if (!linkedIds.includes(studentId)) return user
+      const remainingIds = linkedIds.filter(id => id !== studentId)
+      return { ...user, studentIds: remainingIds, studentId: remainingIds[0] || '', active: remainingIds.length > 0 }
+    }))
   }
 
   return { bootstrapAdmin, bootstrapFixedAccounts, createAccount, login, getUserForToken, revokeToken, listAccounts, deactivateParentAccountsForStudent }
