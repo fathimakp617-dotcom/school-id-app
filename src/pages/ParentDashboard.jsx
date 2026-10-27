@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Layout from '../components/Layout'
 import HomeworkDetailsModal from '../components/HomeworkDetailsModal'
 import { mockAttendance, mockNotifications, formatTime, formatDate, subjectColors } from '../data/mockData'
@@ -148,6 +148,8 @@ function HomeTab({ user }) {
 
 // ---- NOTIFICATIONS TAB ----
 function NotificationsTab({ user }) {
+  const notificationKey = `schoolid-browser-notifications-${user.studentId}`
+  const [browserAlertsEnabled, setBrowserAlertsEnabled] = useState(() => localStorage.getItem(notificationKey) === 'true')
   const attendance = useAttendance().filter(record => record.studentId === user.studentId)
   const student = useStudents().find(record => record.id === user.studentId)
   const homework = useHomework().filter(record => record.class === student?.class)
@@ -155,9 +157,29 @@ function NotificationsTab({ user }) {
     ...attendance.map(record => ({ id: record.id, message: `${record.studentName} ${record.type === 'arrival' ? 'arrived at school' : 'left school'}`, timestamp: record.timestamp, type: record.type })),
     ...homework.map(record => ({ id: record.id, message: `New homework: ${record.title}`, timestamp: record.uploadedAt, type: 'homework' })),
   ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+  useEffect(() => {
+    const handleLiveAttendance = event => {
+      const record = event.detail
+      if (!browserAlertsEnabled || record?.studentId !== user.studentId || !('Notification' in window) || Notification.permission !== 'granted') return
+      const action = record.type === 'arrival' ? 'arrived at school' : 'left school'
+      const notice = new Notification('SchoolID attendance update', { body: `${record.studentName} ${action}.`, tag: `attendance-${record.id}` })
+      notice.onclick = () => { window.focus(); notice.close() }
+    }
+    window.addEventListener('school-attendance-live', handleLiveAttendance)
+    return () => window.removeEventListener('school-attendance-live', handleLiveAttendance)
+  }, [browserAlertsEnabled, user.studentId])
+  const enableBrowserAlerts = async () => {
+    if (!('Notification' in window)) return
+    const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
+    if (permission === 'granted') {
+      localStorage.setItem(notificationKey, 'true')
+      setBrowserAlertsEnabled(true)
+    }
+  }
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold text-gray-900">Notifications</h1><p className="mt-1 text-sm text-gray-500">Attendance and homework alerts for {student?.name || 'your student'}.</p></div>{'Notification' in window && <button type="button" onClick={browserAlertsEnabled ? () => { localStorage.setItem(notificationKey, 'false'); setBrowserAlertsEnabled(false) } : enableBrowserAlerts} className="btn-secondary">{browserAlertsEnabled ? 'Turn off device alerts' : 'Enable device alerts'}</button>}</div>
+      <p className="rounded-xl bg-blue-50 p-3 text-xs text-blue-800">Device alerts appear while SchoolID is open and your browser allows notifications. The in-app history below remains available anytime you sign in.</p>
       <div className="space-y-3">
         {notifications.map(n => (
           <div key={n.id} className="card flex items-start gap-4">
@@ -348,19 +370,27 @@ function FeesTab({ user }) {
 
 export default function ParentDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('home')
+  const students = useStudents()
+  const selectionKey = `schoolid-parent-student-${user.id}`
+  const [selectedStudentId, setSelectedStudentId] = useState(() => localStorage.getItem(selectionKey) || user.studentId || '')
+  useEffect(() => {
+    if (students.length && !students.some(student => student.id === selectedStudentId)) setSelectedStudentId(students[0].id)
+  }, [students, selectedStudentId])
+  const selectedUser = { ...user, studentId: selectedStudentId }
 
   const tabComponents = {
-    home: <HomeTab user={user} />,
-    notifications: <NotificationsTab user={user} />,
-    attendance: <AttendanceTab user={user} />,
-    homework: <HomeworkTab user={user} />,
-    profile: <ProfileTab user={user} />,
-    idcard: <StudentIdCard user={user} />,
-    fees: <FeesTab user={user} />,
+    home: <HomeTab user={selectedUser} />,
+    notifications: <NotificationsTab user={selectedUser} />,
+    attendance: <AttendanceTab user={selectedUser} />,
+    homework: <HomeworkTab user={selectedUser} />,
+    profile: <ProfileTab user={selectedUser} />,
+    idcard: <StudentIdCard user={selectedUser} />,
+    fees: <FeesTab user={selectedUser} />,
   }
 
   return (
     <Layout user={user} onLogout={onLogout} navItems={navItems} activeTab={activeTab} setActiveTab={setActiveTab} accentColor="blue">
+      {students.length > 1 && <label className="card mb-4 flex flex-wrap items-center justify-between gap-3"><span><span className="block font-semibold text-gray-900">Viewing student</span><span className="text-xs text-gray-500">Choose a linked student to view their records</span></span><select aria-label="Select student" value={selectedStudentId} onChange={event => { setSelectedStudentId(event.target.value); localStorage.setItem(selectionKey, event.target.value) }} className="min-w-48 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-800">{students.map(student => <option key={student.id} value={student.id}>{student.name} · {student.class}</option>)}</select></label>}
       {tabComponents[activeTab]}
     </Layout>
   )
