@@ -10,7 +10,7 @@
     "start": "node server.js",
     "db:import-local": "node migrate-server-data.js",
     "build": "vite build",
-    "android:build": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "android:build": "vite build --mode android && npx cap sync android && cd android && ./gradlew assembleDebug",
     "android:release": "vite build --mode android && npx cap sync android && cd android && ./gradlew assembleRelease",
     "preview": "vite preview --host"
   },
