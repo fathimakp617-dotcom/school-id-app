@@ -20,6 +20,7 @@ const scansFile = resolve(dataDir, 'rfid-scans.json')
 const attendanceFile = resolve(dataDir, 'attendance.json')
 const feesFile = resolve(dataDir, 'fees.json')
 const settingsFile = resolve(dataDir, 'settings.json')
+const devicesFile = resolve(dataDir, 'rfid-devices.json')
 const usersFile = resolve(dataDir, 'users.json')
 const sessionsFile = resolve(dataDir, 'sessions.json')
 const attachmentsDir = resolve(dataDir, 'attachments')
@@ -83,6 +84,10 @@ async function readSettings() {
   return { feeAmount: 24500, schoolName: 'SchoolID', upiId: '', ...await persistentStore.read(settingsFile, {}) }
 }
 
+async function readDevices() {
+  return persistentStore.read(devicesFile, [])
+}
+
 async function writeJson(file, value) {
   await persistentStore.write(file, value)
 }
@@ -132,6 +137,8 @@ function loginRateLimited(ip) {
 const parentRoom = studentId => `parent:${studentId}`
 const homeworkRoom = className => `homework-class:${className}`
 const teacherRoom = className => `teacher-class:${className}`
+const linkedStudentIds = user => [...new Set([...(Array.isArray(user?.studentIds) ? user.studentIds : []), ...(user?.studentId ? [user.studentId] : [])])]
+const parentCanAccessStudent = (user, studentId) => linkedStudentIds(user).includes(studentId)
 const emitHomeworkToClass = (className, event, payload) => io.to('role:admin').to(homeworkRoom(className)).emit(event, payload)
 const emitAttendanceTo = (className, studentId, payload) => io.to('role:admin').to(teacherRoom(className)).to(parentRoom(studentId)).emit('attendance:created', payload)
 const emitFeeTo = (studentId, payload) => io.to('role:admin').to(parentRoom(studentId)).emit('fees:updated', payload)
@@ -171,12 +178,12 @@ const httpServer = createServer(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/health') {
     try {
-      const [students, homework, completions, scans, attendance, fees, settings] = await Promise.all([
+      const [students, homework, completions, scans, attendance, fees, settings, devices] = await Promise.all([
         healthJson(studentsFile, [], 'array'), healthJson(dataFile, [], 'array'),
         healthJson(completionsFile, {}, 'object'), healthJson(scansFile, [], 'array'),
-        healthJson(attendanceFile, [], 'array'), healthJson(feesFile, {}, 'object'), healthJson(settingsFile, { feeAmount: 24500, schoolName: 'SchoolID', upiId: '' }, 'object'),
+        healthJson(attendanceFile, [], 'array'), healthJson(feesFile, {}, 'object'), healthJson(settingsFile, { feeAmount: 24500, schoolName: 'SchoolID', upiId: '' }, 'object'), healthJson(devicesFile, [], 'array'),
       ])
-      sendJson(response, 200, { ok: true, storage: persistentStore.databaseConfigured ? 'postgresql' : 'local-json', database: persistentStore.databaseConfigured ? 'healthy' : 'not_configured', records: { students: students.length + mockStudents.length, homework: homework.length + mockHomework.length, scans: scans.length, attendance: attendance.length, feeAccounts: Object.keys(fees).length, completionAccounts: Object.keys(completions).length }, paymentConfigured: Boolean(settings.upiId) })
+      sendJson(response, 200, { ok: true, storage: persistentStore.databaseConfigured ? 'postgresql' : 'local-json', database: persistentStore.databaseConfigured ? 'healthy' : 'not_configured', records: { students: students.length + mockStudents.length, homework: homework.length + mockHomework.length, scans: scans.length, attendance: attendance.length, feeAccounts: Object.keys(fees).length, completionAccounts: Object.keys(completions).length, readers: devices.length }, paymentConfigured: Boolean(settings.upiId) })
     } catch (error) {
       sendJson(response, 503, { ok: false, storage: 'error', database: persistentStore.databaseConfigured ? 'error' : 'not_configured', error: error.message })
     }
@@ -186,6 +193,36 @@ const httpServer = createServer(async (request, response) => {
     const expectedDeviceKey = process.env.SCHOOLID_RFID_DEVICE_KEY || ''
     if (process.env.NODE_ENV === 'production' && (!expectedDeviceKey || expectedDeviceKey === 'replace-with-a-long-random-device-secret' || request.headers['x-device-key'] !== expectedDeviceKey)) {
       return sendJson(response, 401, { error: 'RFID reader is not authorized.' })
+    }
+  }
+  if (request.method === 'POST' && url.pathname === '/api/rfid/heartbeat') {
+    const expectedDeviceKey = process.env.SCHOOLID_RFID_DEVICE_KEY || ''
+    if (!expectedDeviceKey || expectedDeviceKey === 'replace-with-a-long-random-device-secret' || request.headers['x-device-key'] !== expectedDeviceKey) {
+      return sendJson(response, 401, { error: 'RFID reader is not authorized.' })
+    }
+    try {
+      const body = await readRequestJson(request)
+      const deviceId = String(body.deviceId || '').trim().slice(0, 80)
+      if (!deviceId) return sendJson(response, 400, { error: 'Reader device ID is required.' })
+      const devices = await readDevices()
+      const device = {
+        deviceId,
+        ip: String(body.ip || '').slice(0, 64),
+        rssi: Number.isFinite(Number(body.rssi)) ? Number(body.rssi) : null,
+        uptimeSeconds: Number.isFinite(Number(body.uptimeSeconds)) ? Number(body.uptimeSeconds) : null,
+        queueDepth: Math.max(0, Number(body.queueDepth) || 0),
+        firmwareVersion: String(body.firmwareVersion || 'unknown').slice(0, 40),
+        lastScanAt: body.lastScanAt ? String(body.lastScanAt).slice(0, 40) : null,
+        lastSeenAt: new Date().toISOString(),
+      }
+      const index = devices.findIndex(item => item.deviceId === deviceId)
+      if (index >= 0) devices[index] = device
+      else devices.unshift(device)
+      await writeJson(devicesFile, devices.slice(0, 50))
+      io.to('role:admin').emit('rfid:device', device)
+      return sendJson(response, 200, { ok: true, serverTime: device.lastSeenAt })
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid reader heartbeat.' })
     }
   }
   let currentUser = null
@@ -225,8 +262,9 @@ const httpServer = createServer(async (request, response) => {
     const added = await readAddedHomework()
     const homework = [...mockHomework, ...added]
     if (currentUser.role === 'parent') {
-      const student = (await readActiveStudents()).find(item => item.id === currentUser.studentId)
-      return sendJson(response, 200, student ? homework.filter(item => item.class === student.class) : [])
+      const studentIds = new Set(linkedStudentIds(currentUser))
+      const classes = new Set((await readActiveStudents()).filter(item => studentIds.has(item.id)).map(item => item.class))
+      return sendJson(response, 200, homework.filter(item => classes.has(item.class)))
     }
     return sendJson(response, 200, currentUser.role === 'teacher' ? homework.filter(item => item.class === currentUser.class) : homework)
   }
@@ -288,7 +326,7 @@ const httpServer = createServer(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/students') {
     const students = await readActiveStudents()
-    if (currentUser.role === 'parent') return sendJson(response, 200, students.filter(item => item.id === currentUser.studentId))
+    if (currentUser.role === 'parent') { const ids = new Set(linkedStudentIds(currentUser)); return sendJson(response, 200, students.filter(item => ids.has(item.id))) }
     return sendJson(response, 200, currentUser.role === 'teacher' ? students.filter(item => item.class === currentUser.class) : students)
   }
   if (request.method === 'GET' && url.pathname === '/api/rfid/scans') {
@@ -297,11 +335,48 @@ const httpServer = createServer(async (request, response) => {
     sendJson(response, 200, (await readScans()).slice(0, limit))
     return
   }
+  if (request.method === 'GET' && url.pathname === '/api/admin/devices') {
+    if (!requireRole(response, currentUser, ['admin'])) return
+    return sendJson(response, 200, await readDevices())
+  }
+  if (request.method === 'GET' && url.pathname === '/api/admin/backup') {
+    if (!requireRole(response, currentUser, ['admin'])) return
+    try {
+      const [students, deletedStudents, homework, completions, scans, attendance, fees, settings, devices] = await Promise.all([
+        persistentStore.read(studentsFile, []), persistentStore.read(deletedStudentsFile, []), readAddedHomework(), readCompletions(), readScans(), readAttendance(), readFees(), readSettings(), readDevices(),
+      ])
+      return sendJson(response, 200, { format: 'schoolid-backup-v1', createdAt: new Date().toISOString(), records: { students, deletedStudents, homework, completions, scans, attendance, fees, settings, devices } })
+    } catch {
+      return sendJson(response, 503, { error: 'Could not create a data backup.' })
+    }
+  }
+  if (request.method === 'POST' && url.pathname === '/api/admin/backup/restore') {
+    if (!requireRole(response, currentUser, ['admin'])) return
+    try {
+      const backup = await readRequestJson(request)
+      if (backup.format !== 'schoolid-backup-v1' || backup.confirmRestore !== true || !backup.records || typeof backup.records !== 'object') return sendJson(response, 400, { error: 'Choose a valid SchoolID backup and confirm the restore.' })
+      const records = backup.records
+      const definitions = [
+        ['students', studentsFile, 'array'], ['deletedStudents', deletedStudentsFile, 'array'], ['homework', dataFile, 'array'],
+        ['completions', completionsFile, 'object'], ['scans', scansFile, 'array'], ['attendance', attendanceFile, 'array'],
+        ['fees', feesFile, 'object'], ['settings', settingsFile, 'object'], ['devices', devicesFile, 'array'],
+      ]
+      for (const [key, , type] of definitions) {
+        const value = records[key]
+        if (type === 'array' ? !Array.isArray(value) : !value || typeof value !== 'object' || Array.isArray(value)) return sendJson(response, 400, { error: `Backup is missing valid ${key} data.` })
+      }
+      for (const [key, file] of definitions) await writeJson(file, records[key])
+      io.to('role:admin').emit('rfid:scans:sync', records.scans.slice(0, 100))
+      return sendJson(response, 200, { ok: true, restoredAt: new Date().toISOString() })
+    } catch {
+      return sendJson(response, 400, { error: 'Could not restore this backup.' })
+    }
+  }
   if (request.method === 'GET' && url.pathname === '/api/attendance') {
     const studentId = url.searchParams.get('studentId')
     const records = await readAttendance()
     let visibleRecords = records
-    if (currentUser.role === 'parent') visibleRecords = visibleRecords.filter(record => record.studentId === currentUser.studentId)
+    if (currentUser.role === 'parent') { const ids = new Set(linkedStudentIds(currentUser)); visibleRecords = visibleRecords.filter(record => ids.has(record.studentId)) }
     if (currentUser.role === 'teacher') visibleRecords = visibleRecords.filter(record => record.class === currentUser.class)
     if (studentId) visibleRecords = visibleRecords.filter(record => record.studentId === studentId)
     return sendJson(response, 200, visibleRecords.slice(0, 500))
@@ -311,8 +386,8 @@ const httpServer = createServer(async (request, response) => {
     const studentId = url.searchParams.get('studentId')
     const settings = await readSettings()
     if (currentUser.role === 'teacher') return sendJson(response, 403, { error: 'Fee records are only available to the Parent and Admin.' })
-    if (currentUser.role === 'parent' && studentId && studentId !== currentUser.studentId) return sendJson(response, 403, { error: 'You can only view your linked student’s fees.' })
-    const requestedStudent = currentUser.role === 'parent' ? currentUser.studentId : studentId
+    if (currentUser.role === 'parent' && studentId && !parentCanAccessStudent(currentUser, studentId)) return sendJson(response, 403, { error: 'This student is not linked to your Parent account.' })
+    const requestedStudent = currentUser.role === 'parent' ? (studentId || currentUser.studentId) : studentId
     if (requestedStudent) return sendJson(response, 200, fees[requestedStudent] || { studentId: requestedStudent, amount: settings.feeAmount, status: 'due' })
     return sendJson(response, 200, fees)
   }
@@ -338,7 +413,7 @@ const httpServer = createServer(async (request, response) => {
     if (!requireRole(response, currentUser, ['parent'])) return
     try {
       const { studentId, paymentReference = '' } = await readRequestJson(request)
-      if (studentId !== currentUser.studentId) return sendJson(response, 403, { error: 'You can only submit payment for your linked student.' })
+      if (!parentCanAccessStudent(currentUser, studentId)) return sendJson(response, 403, { error: 'This student is not linked to your Parent account.' })
       const { feeAmount } = await readSettings()
       const amount = feeAmount
       if (!studentId || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return sendJson(response, 400, { error: 'Valid student and fee amount are required.' })
@@ -434,7 +509,7 @@ const httpServer = createServer(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/homework/completions') {
     const studentId = url.searchParams.get('studentId')
-    if (currentUser.role === 'parent' && studentId !== currentUser.studentId) return sendJson(response, 403, { error: 'You can only view completion status for your linked student.' })
+    if (currentUser.role === 'parent' && !parentCanAccessStudent(currentUser, studentId)) return sendJson(response, 403, { error: 'This student is not linked to your Parent account.' })
     if (currentUser.role === 'teacher') return sendJson(response, 403, { error: 'Completion status is not available to this account.' })
     const completions = await readCompletions()
     sendJson(response, 200, { studentId, completedIds: completions[studentId] || [] })
@@ -445,7 +520,7 @@ const httpServer = createServer(async (request, response) => {
     try {
       const { studentId, homeworkId, completed } = await readRequestJson(request)
       if (!studentId || !homeworkId || typeof completed !== 'boolean') return sendJson(response, 400, { error: 'Student, homework and completion state are required.' })
-      if (studentId !== currentUser.studentId) return sendJson(response, 403, { error: 'You can only update completion status for your linked student.' })
+      if (!parentCanAccessStudent(currentUser, studentId)) return sendJson(response, 403, { error: 'This student is not linked to your Parent account.' })
       const completions = await readCompletions()
       const ids = new Set(completions[studentId] || [])
       if (completed) ids.add(homeworkId)
@@ -462,20 +537,29 @@ const httpServer = createServer(async (request, response) => {
   }
   if (request.method === 'POST' && url.pathname === '/api/rfid/scan') {
     try {
-      const { uid } = await readRequestJson(request)
+      const { uid, eventId, timestamp } = await readRequestJson(request)
       if (!uid?.trim()) return sendJson(response, 400, { error: 'RFID UID is required.' })
       const normalizedUID = uid.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+      if (eventId) {
+        const scans = await readScans()
+        const previous = scans.find(item => item.eventId === String(eventId).slice(0, 100))
+        if (previous) {
+          const previousStudent = previous.studentId ? (await readActiveStudents()).find(item => item.id === previous.studentId) : null
+          return sendJson(response, 200, { authorized: Boolean(previous.authorized), uid: normalizedUID, student: previousStudent || undefined, display: previous.studentName || 'UNAUTHORIZED CARD', duplicate: true })
+        }
+      }
       const student = (await readActiveStudents()).find(item => item.rfidUID.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedUID)
       const event = {
         id: randomUUID(),
+        eventId: eventId ? String(eventId).slice(0, 100) : undefined,
         uid: normalizedUID,
-        timestamp: new Date().toISOString(),
+        timestamp: timestamp && Number.isFinite(Date.parse(timestamp)) ? new Date(timestamp).toISOString() : new Date().toISOString(),
         authorized: Boolean(student),
         studentId: student?.id || null,
         studentName: student?.name || null,
         class: student?.class || null,
       }
-      const scans = [event, ...await readScans()]
+      const scans = [event, ...await readScans()].slice(0, 10000)
       await writeJson(scansFile, scans)
       io.to('role:admin').emit('rfid:scan', event)
       if (!student) {
@@ -483,12 +567,12 @@ const httpServer = createServer(async (request, response) => {
         return sendJson(response, 200, { authorized: false, uid: normalizedUID, display: 'UNAUTHORIZED CARD' })
       }
       const attendance = await readAttendance()
-      const day = new Date().toISOString().slice(0, 10)
+      const day = event.timestamp.slice(0, 10)
       const todays = attendance.filter(item => item.studentId === student.id && item.timestamp.slice(0, 10) === day)
-      const latest = todays[0]
-      const duplicateTap = latest && Date.now() - new Date(latest.timestamp).getTime() < 30000
-      if (!duplicateTap && !todays.some(item => item.type === 'departure')) {
-        const type = todays.some(item => item.type === 'arrival') ? 'departure' : 'arrival'
+      const duplicateTap = todays.some(item => Math.abs(new Date(item.timestamp).getTime() - new Date(event.timestamp).getTime()) < 30000)
+      if (!duplicateTap) {
+        const earlierEvents = todays.filter(item => new Date(item.timestamp).getTime() < new Date(event.timestamp).getTime())
+        const type = earlierEvents.length % 2 === 0 ? 'arrival' : 'departure'
         const attendanceEvent = { id: randomUUID(), studentId: student.id, studentName: student.name, class: student.class, type, timestamp: event.timestamp, uid: normalizedUID }
         attendance.unshift(attendanceEvent)
         await writeJson(attendanceFile, attendance.slice(0, 5000))
@@ -537,9 +621,10 @@ io.on('connection', async socket => {
   socket.join('school:all')
   socket.join(`role:${user.role}`)
   if (user.role === 'teacher') { socket.join(homeworkRoom(user.class)); socket.join(teacherRoom(user.class)) }
-  if (user.role === 'parent') socket.join(parentRoom(user.studentId))
+  const parentIds = new Set(linkedStudentIds(user))
+  if (user.role === 'parent') for (const studentId of parentIds) socket.join(parentRoom(studentId))
   const allStudents = await readActiveStudents()
-  const visibleStudents = user.role === 'admin' ? allStudents : user.role === 'teacher' ? allStudents.filter(item => item.class === user.class) : allStudents.filter(item => item.id === user.studentId)
+  const visibleStudents = user.role === 'admin' ? allStudents : user.role === 'teacher' ? allStudents.filter(item => item.class === user.class) : allStudents.filter(item => parentIds.has(item.id))
   const visibleClasses = new Set(visibleStudents.map(item => item.class))
   if (user.role === 'parent') for (const className of visibleClasses) socket.join(homeworkRoom(className))
   const allHomework = [...mockHomework, ...await readAddedHomework()]
@@ -547,10 +632,10 @@ io.on('connection', async socket => {
   socket.emit('student:sync', visibleStudents)
   if (user.role === 'admin') socket.emit('rfid:scans:sync', (await readScans()).slice(0, 100))
   const allAttendance = await readAttendance()
-  const visibleAttendance = user.role === 'admin' ? allAttendance : user.role === 'teacher' ? allAttendance.filter(item => item.class === user.class) : allAttendance.filter(item => item.studentId === user.studentId)
+  const visibleAttendance = user.role === 'admin' ? allAttendance : user.role === 'teacher' ? allAttendance.filter(item => item.class === user.class) : allAttendance.filter(item => parentIds.has(item.studentId))
   socket.emit('attendance:sync', visibleAttendance.slice(0, 500))
   socket.on('homework:completion-subscribe', async studentId => {
-    if (user.role !== 'parent' || studentId !== user.studentId) return
+    if (user.role !== 'parent' || !parentIds.has(studentId)) return
     const completions = await readCompletions()
     socket.emit('homework:completion-sync', { studentId, completedIds: completions[studentId] || [] })
   })
@@ -560,7 +645,7 @@ async function start() {
   if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) throw new Error('DATABASE_URL is required in production; refusing to start with local JSON storage.')
   persistentStore = await createJsonStore({ dataDir })
   await authStore.bootstrapAdmin()
-  await authStore.bootstrapFixedAccounts()
+  await authStore.bootstrapFixedAccounts({ activeStudentIds: (await readActiveStudents()).map(student => student.id) })
   const accounts = await authStore.listAccounts()
   if (!accounts.some(user => user.role === 'admin')) throw new Error('No SchoolID Admin exists. Set SCHOOLID_ADMIN_EMAIL and SCHOOLID_ADMIN_PASSWORD before starting the server.')
   if (process.env.NODE_ENV === 'production' && (!accounts.some(user => user.role === 'teacher') || !accounts.some(user => user.role === 'parent'))) {
